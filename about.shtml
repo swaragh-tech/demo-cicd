@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Demo Project - About</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<!--#include virtual="includes/header.html" -->
+
+<main>
+  <h1>About This Demo</h1>
+  <p>This page demonstrates using Server Side Includes (SSI) with header and footer in an includes folder.</p>
+</main>
+
+<!--#include virtual="includes/footer.html" -->
+
+<script src="js/script.js"></script>
+</body>
+</html>

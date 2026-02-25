@@ -1,0 +1,46 @@
+name: Deploy Static Site
+
+on:
+  workflow_run:
+    workflows: ["Static Site Quality Check"] # Must match CI workflow name exactly
+    types:
+      - completed
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Prepare Deployment Artifact
+        run: |
+          rsync -av --exclude=".git" --exclude=".github" ./ ./
+
+      - name: Clean remote folder
+        uses: appleboy/ssh-action@v0.1.10
+        with:
+          host: ${{ secrets.HOST_IP }}
+          username: ec2-user
+          key: ${{ secrets.HOST_KEY }}
+          script: |
+            rm -rf /var/www/demo-cicd/*
+
+      - name: Deploy to EC2
+        uses: appleboy/scp-action@v0.1.4
+        with:
+          host: ${{ secrets.HOST_IP }}
+          username: ec2-user
+          key: ${{ secrets.HOST_KEY }}
+          source: "./*"
+          target: "/var/www/demo-cicd"
+
+      - name: Restart Nginx
+        uses: appleboy/ssh-action@v0.1.10
+        with:
+          host: ${{ secrets.HOST_IP }}
+          username: ec2-user
+          key: ${{ secrets.HOST_KEY }}
+          script: |
+            sudo systemctl restart nginx
