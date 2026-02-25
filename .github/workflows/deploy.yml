@@ -9,6 +9,7 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    environment: PRODUCTION_SERVER
 
     steps:
       - name: Checkout Code
@@ -25,7 +26,7 @@ jobs:
           username: ec2-user
           key: ${{ secrets.HOST_KEY }}
           script: |
-            rm -rf /var/www/demo-cicd/*
+            rm -rf ${{ secrets.DEPLOY_PATH }}/*
 
       - name: Deploy to EC2
         uses: appleboy/scp-action@v0.1.4
@@ -34,7 +35,7 @@ jobs:
           username: ec2-user
           key: ${{ secrets.HOST_KEY }}
           source: "./*"
-          target: "/var/www/demo-cicd"
+          target: "${{ secrets.DEPLOY_PATH }}"
 
       - name: Restart Nginx
         uses: appleboy/ssh-action@v0.1.10
