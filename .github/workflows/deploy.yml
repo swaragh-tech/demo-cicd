@@ -74,36 +74,42 @@ jobs:
           rsync -av --exclude=".git" --exclude=".github" ./ ./
 
       - name: Validate Required Secrets
+        id: validate-secrets
         run: |
           echo ""
           echo "════════════════════════════════════════════"
           echo "🔐 VALIDATING DEPLOYMENT SECRETS"
           echo "════════════════════════════════════════════"
 
+          HOST_IP="${{ secrets.HOST_IP }}"
+          DEPLOY_PATH="${{ secrets.DEPLOY_PATH }}"
+          DEPLOY_USERNAME="${{ secrets.DEPLOY_USERNAME }}"
+          HOST_KEY="${{ secrets.HOST_KEY }}"
+
           MISSING_SECRETS=""
 
-          if [ -z "${{ secrets.HOST_IP }}" ]; then
+          if [ -z "$HOST_IP" ] || [ "$HOST_IP" = "null" ] || [ "$HOST_IP" = "" ]; then
             echo "❌ HOST_IP not configured"
-            MISSING_SECRETS="HOST_IP "
+            MISSING_SECRETS="${MISSING_SECRETS}HOST_IP "
           else
             echo "✅ HOST_IP is set"
           fi
 
-          if [ -z "${{ secrets.DEPLOY_PATH }}" ]; then
+          if [ -z "$DEPLOY_PATH" ] || [ "$DEPLOY_PATH" = "null" ] || [ "$DEPLOY_PATH" = "" ]; then
             echo "❌ DEPLOY_PATH not configured"
             MISSING_SECRETS="${MISSING_SECRETS}DEPLOY_PATH "
           else
             echo "✅ DEPLOY_PATH is set"
           fi
 
-          if [ -z "${{ secrets.DEPLOY_USERNAME }}" ]; then
+          if [ -z "$DEPLOY_USERNAME" ] || [ "$DEPLOY_USERNAME" = "null" ] || [ "$DEPLOY_USERNAME" = "" ]; then
             echo "❌ DEPLOY_USERNAME not configured"
             MISSING_SECRETS="${MISSING_SECRETS}DEPLOY_USERNAME "
           else
             echo "✅ DEPLOY_USERNAME is set"
           fi
 
-          if [ -z "${{ secrets.HOST_KEY }}" ]; then
+          if [ -z "$HOST_KEY" ] || [ "$HOST_KEY" = "null" ] || [ "$HOST_KEY" = "" ]; then
             echo "❌ HOST_KEY not configured"
             MISSING_SECRETS="${MISSING_SECRETS}HOST_KEY "
           else
@@ -111,27 +117,62 @@ jobs:
           fi
 
           echo "════════════════════════════════════════════"
+          echo ""
 
           if [ -n "$MISSING_SECRETS" ]; then
+            echo "⚠️  ⚠️  ⚠️  MISSING SECRETS ⚠️  ⚠️  ⚠️ "
+            echo "Missing: $MISSING_SECRETS"
             echo ""
-            echo "⚠️  MISSING SECRETS: $MISSING_SECRETS"
+            echo "📋 STEP-BY-STEP FIX:"
             echo ""
-            echo "📋 To fix, go to:"
-            echo "   GitHub → Settings → Environments → ${{ needs.determine-environment.outputs.environment }}"
+            echo "1️⃣  Go to GitHub.com → Your Repository"
+            echo "2️⃣  Click 'Settings' (gear icon at top)"
+            echo "3️⃣  In left menu, click 'Environments'"
+            echo "4️⃣  Click on the environment: '${{ needs.determine-environment.outputs.environment }}'"
+            echo "5️⃣  Click 'Add secret' button"
+            echo "6️⃣  Add these secrets (create each one):"
             echo ""
-            echo "Add these secrets:"
-            echo "   • HOST_IP: Your server IP address"
-            echo "   • DEPLOY_PATH: Target folder on server (e.g., /var/www/html)"
-            echo "   • DEPLOY_USERNAME: SSH username (e.g., deploy)"
-            echo "   • HOST_KEY: SSH private key"
+            echo "   Name: HOST_IP"
+            echo "   Value: (your server's IP address, e.g., 192.168.1.100)"
             echo ""
-            echo "❌ DEPLOYMENT CANNOT PROCEED"
+            echo "   Name: DEPLOY_PATH"
+            echo "   Value: (path where files go, e.g., /var/www/html)"
+            echo ""
+            echo "   Name: DEPLOY_USERNAME"
+            echo "   Value: (SSH username, e.g., ubuntu or deploy)"
+            echo ""
+            echo "   Name: HOST_KEY"
+            echo "   Value: (your SSH private key)"
+            echo ""
+            echo "════════════════════════════════════════════"
+            echo "❌ DEPLOYMENT STOPPED - SECRETS MISSING"
+            echo "════════════════════════════════════════════"
             exit 1
           else
-            echo "✅ ALL REQUIRED SECRETS ARE CONFIGURED"
-            echo "🚀 DEPLOYMENT WILL PROCEED"
+            echo "✅ ALL REQUIRED SECRETS CONFIGURED"
+            echo "🚀 PROCEEDING WITH DEPLOYMENT"
+            echo "════════════════════════════════════════════"
+            echo ""
           fi
-          echo ""
+
+      - name: Test SSH Connection
+        uses: appleboy/ssh-action@v0.1.10
+        with:
+          host: ${{ secrets.HOST_IP }}
+          username: ${{ secrets.DEPLOY_USERNAME }}
+          key: ${{ secrets.HOST_KEY }}
+          port: 22
+          script: |
+            echo ""
+            echo "🔗 SSH CONNECTION SUCCESSFUL ✅"
+            echo "=========================="
+            echo "Hostname: $(hostname)"
+            echo "User: $(whoami)"
+            echo "Current Time: $(date)"
+            echo "Disk Space:"
+            df -h | grep -E "Filesystem|^/"
+            echo "=========================="
+            echo ""
 
       - name: Display Deployment Info
         run: |
