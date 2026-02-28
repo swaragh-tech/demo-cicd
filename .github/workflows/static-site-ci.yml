@@ -2,9 +2,16 @@ name: Static Site Quality Check
 
 on:
   push:
-    branches: [ main ]
+    branches:
+      - main
+      - staging
+      - develop
+
   pull_request:
-    branches: [ main ]
+    branches:
+      - main
+      - staging
+      - develop 
 
 jobs:
   quality:
