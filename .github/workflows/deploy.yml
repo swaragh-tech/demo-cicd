@@ -68,6 +68,8 @@ jobs:
           echo "👤 Actor: ${{ github.actor }}"
           echo "🏢 Repository: ${{ github.repository }}"
           echo "════════════════════════════════════════════"
+
+      - name: Prepare Deployment Artifact
         run: |
           rsync -av --exclude=".git" --exclude=".github" ./ ./
 
@@ -78,10 +80,15 @@ jobs:
           echo "🚀 DEPLOYMENT CONFIGURATION"
           echo "════════════════════════════════════════════"
           echo "🎯 Environment: ${{ needs.determine-environment.outputs.environment }}"
-          echo "📍 Server IP: ${{ secrets.HOST_IP }}"
-          echo "📂 Deploy Path: ${{ secrets.DEPLOY_PATH }}"
-          echo "👤 SSH Username: ${{ secrets.DEPLOY_USERNAME }}"
-          echo "🔑 SSH Key Configured: $([ -z '${{ secrets.HOST_KEY }}' ] && echo 'NO' || echo 'YES')"
+          echo "📍 Server IP Loaded: $([ -n '${{ secrets.HOST_IP }}' ] && echo '✅ YES' || echo '❌ NO')"
+          echo "📂 Deploy Path Loaded: $([ -n '${{ secrets.DEPLOY_PATH }}' ] && echo '✅ YES' || echo '❌ NO')"
+          echo "👤 SSH Username Loaded: $([ -n '${{ secrets.DEPLOY_USERNAME }}' ] && echo '✅ YES' || echo '❌ NO')"
+          echo "🔑 SSH Key Loaded: $([ -n '${{ secrets.HOST_KEY }}' ] && echo '✅ YES' || echo '❌ NO')"
+          echo ""
+          echo "⚠️  Actual Values (masked for security):"
+          echo "   Host: ${{ secrets.HOST_IP }}"
+          echo "   Path: ${{ secrets.DEPLOY_PATH }}"
+          echo "   User: ${{ secrets.DEPLOY_USERNAME }}"
           echo "════════════════════════════════════════════"
           echo ""
 
