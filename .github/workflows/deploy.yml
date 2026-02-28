@@ -19,19 +19,28 @@ jobs:
       - name: Determine target environment
         id: set-env
         run: |
+          echo "════════════════════════════════════════════"
+          echo "🔍 ENVIRONMENT DETECTION STARTED"
+          echo "📌 Current Branch: ${{ github.ref }}"
+          echo "════════════════════════════════════════════"
           if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
             echo "environment=production" >> $GITHUB_OUTPUT
             echo "deploy=true" >> $GITHUB_OUTPUT
+            echo "✅ ENVIRONMENT SET TO: production"
           elif [[ "${{ github.ref }}" == "refs/heads/staging" ]]; then
             echo "environment=testing" >> $GITHUB_OUTPUT
             echo "deploy=true" >> $GITHUB_OUTPUT
+            echo "✅ ENVIRONMENT SET TO: testing"
           elif [[ "${{ github.ref }}" == "refs/heads/develop" ]]; then
             echo "environment=development" >> $GITHUB_OUTPUT
             echo "deploy=true" >> $GITHUB_OUTPUT
+            echo "✅ ENVIRONMENT SET TO: development"
           else
             echo "environment=none" >> $GITHUB_OUTPUT
             echo "deploy=false" >> $GITHUB_OUTPUT
+            echo "⏭️  DEPLOY SKIPPED - Branch not configured"
           fi
+          echo "════════════════════════════════════════════"
 
       - name: Skip notification
         if: steps.set-env.outputs.deploy == 'false'
@@ -47,16 +56,34 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Prepare Deployment Artifact
+      - name: Show Environment Variables
+        run: |
+          echo "════════════════════════════════════════════"
+          echo "📊 WORKFLOW EXECUTION ENVIRONMENT"
+          echo "════════════════════════════════════════════"
+          echo "🎯 Target Environment: ${{ needs.determine-environment.outputs.environment }}"
+          echo "🔄 Deploy Flag: ${{ needs.determine-environment.outputs.deploy }}"
+          echo "🌳 Branch: ${{ github.ref }}"
+          echo "📍 Commit SHA: ${{ github.sha }}"
+          echo "👤 Actor: ${{ github.actor }}"
+          echo "🏢 Repository: ${{ github.repository }}"
+          echo "════════════════════════════════════════════"
         run: |
           rsync -av --exclude=".git" --exclude=".github" ./ ./
 
       - name: Display Deployment Info
         run: |
-          echo "🚀 Environment: ${{ needs.determine-environment.outputs.environment }}"
+          echo ""
+          echo "════════════════════════════════════════════"
+          echo "🚀 DEPLOYMENT CONFIGURATION"
+          echo "════════════════════════════════════════════"
+          echo "🎯 Environment: ${{ needs.determine-environment.outputs.environment }}"
           echo "📍 Server IP: ${{ secrets.HOST_IP }}"
           echo "📂 Deploy Path: ${{ secrets.DEPLOY_PATH }}"
-          echo "👤 Username: ${{ secrets.DEPLOY_USERNAME }}"
+          echo "👤 SSH Username: ${{ secrets.DEPLOY_USERNAME }}"
+          echo "🔑 SSH Key Configured: $([ -z '${{ secrets.HOST_KEY }}' ] && echo 'NO' || echo 'YES')"
+          echo "════════════════════════════════════════════"
+          echo ""
 
       - name: Clean remote folder
         uses: appleboy/ssh-action@v0.1.10
@@ -88,11 +115,27 @@ jobs:
       - name: Deployment Success
         if: success()
         run: |
-          echo "✅ Successfully deployed to ${{ needs.determine-environment.outputs.environment }}"
-          echo "📊 Details: Branch=${{ github.ref }}, Commit=${{ github.sha }}"
+          echo ""
+          echo "════════════════════════════════════════════"
+          echo "✅ DEPLOYMENT COMPLETED SUCCESSFULLY"
+          echo "════════════════════════════════════════════"
+          echo "🎯 Environment: ${{ needs.determine-environment.outputs.environment }}"
+          echo "🌳 Branch: ${{ github.ref }}"
+          echo "📍 Commit SHA: ${{ github.sha }}"
+          echo "⏰ Timestamp: $(date)"
+          echo "════════════════════════════════════════════"
+          echo ""
 
       - name: Deployment Failed
         if: failure()
         run: |
-          echo "❌ Deployment to ${{ needs.determine-environment.outputs.environment }} FAILED"
+          echo ""
+          echo "════════════════════════════════════════════"
+          echo "❌ DEPLOYMENT FAILED"
+          echo "════════════════════════════════════════════"
+          echo "🎯 Environment: ${{ needs.determine-environment.outputs.environment }}"
+          echo "🌳 Branch: ${{ github.ref }}"
+          echo "📍 Commit SHA: ${{ github.sha }}"
+          echo "⏰ Timestamp: $(date)"
+          echo "════════════════════════════════════════════"
           exit 1
