@@ -73,35 +73,99 @@ jobs:
         run: |
           rsync -av --exclude=".git" --exclude=".github" ./ ./
 
-      - name: Display Deployment Info
+      - name: Validate Required Secrets
         run: |
           echo ""
           echo "════════════════════════════════════════════"
-          echo "🚀 DEPLOYMENT CONFIGURATION"
+          echo "🔐 VALIDATING DEPLOYMENT SECRETS"
           echo "════════════════════════════════════════════"
-          echo "🎯 Environment: ${{ needs.determine-environment.outputs.environment }}"
-          echo "📍 Server IP Loaded: $([ -n '${{ secrets.HOST_IP }}' ] && echo '✅ YES' || echo '❌ NO')"
-          echo "📂 Deploy Path Loaded: $([ -n '${{ secrets.DEPLOY_PATH }}' ] && echo '✅ YES' || echo '❌ NO')"
-          echo "👤 SSH Username Loaded: $([ -n '${{ secrets.DEPLOY_USERNAME }}' ] && echo '✅ YES' || echo '❌ NO')"
-          echo "🔑 SSH Key Loaded: $([ -n '${{ secrets.HOST_KEY }}' ] && echo '✅ YES' || echo '❌ NO')"
+
+          MISSING_SECRETS=""
+
+          if [ -z "${{ secrets.HOST_IP }}" ]; then
+            echo "❌ HOST_IP not configured"
+            MISSING_SECRETS="HOST_IP "
+          else
+            echo "✅ HOST_IP is set"
+          fi
+
+          if [ -z "${{ secrets.DEPLOY_PATH }}" ]; then
+            echo "❌ DEPLOY_PATH not configured"
+            MISSING_SECRETS="${MISSING_SECRETS}DEPLOY_PATH "
+          else
+            echo "✅ DEPLOY_PATH is set"
+          fi
+
+          if [ -z "${{ secrets.DEPLOY_USERNAME }}" ]; then
+            echo "❌ DEPLOY_USERNAME not configured"
+            MISSING_SECRETS="${MISSING_SECRETS}DEPLOY_USERNAME "
+          else
+            echo "✅ DEPLOY_USERNAME is set"
+          fi
+
+          if [ -z "${{ secrets.HOST_KEY }}" ]; then
+            echo "❌ HOST_KEY not configured"
+            MISSING_SECRETS="${MISSING_SECRETS}HOST_KEY "
+          else
+            echo "✅ HOST_KEY is set"
+          fi
+
+          echo "════════════════════════════════════════════"
+
+          if [ -n "$MISSING_SECRETS" ]; then
+            echo ""
+            echo "⚠️  MISSING SECRETS: $MISSING_SECRETS"
+            echo ""
+            echo "📋 To fix, go to:"
+            echo "   GitHub → Settings → Environments → ${{ needs.determine-environment.outputs.environment }}"
+            echo ""
+            echo "Add these secrets:"
+            echo "   • HOST_IP: Your server IP address"
+            echo "   • DEPLOY_PATH: Target folder on server (e.g., /var/www/html)"
+            echo "   • DEPLOY_USERNAME: SSH username (e.g., deploy)"
+            echo "   • HOST_KEY: SSH private key"
+            echo ""
+            echo "❌ DEPLOYMENT CANNOT PROCEED"
+            exit 1
+          else
+            echo "✅ ALL REQUIRED SECRETS ARE CONFIGURED"
+            echo "🚀 DEPLOYMENT WILL PROCEED"
+          fi
           echo ""
-          echo "⚠️  Actual Values (masked for security):"
-          echo "   Host: ${{ secrets.HOST_IP }}"
-          echo "   Path: ${{ secrets.DEPLOY_PATH }}"
-          echo "   User: ${{ secrets.DEPLOY_USERNAME }}"
+
+      - name: Display Deployment Info
+        run: |
+          set -e
+          echo ""
+          echo "════════════════════════════════════════════"
+          echo "🚀 DEPLOYMENT CONFIGURATION SUMMARY"
+          echo "════════════════════════════════════════════"
+          echo "🎯 Target Environment: ${{ needs.determine-environment.outputs.environment }}"
+          echo "🌳 Branch: ${{ github.ref }}"
+          echo "📍 Commit SHA: ${{ github.sha }}"
+          echo "👤 Actor: ${{ github.actor }}"
+          echo ""
+          echo "📋 DEPLOYMENT STEPS:"
+          echo "   1️⃣  Clean remote folder at ${{ secrets.DEPLOY_PATH }}"
+          echo "   2️⃣  Copy files via SCP"
+          echo "   3️⃣  Restart Nginx"
           echo "════════════════════════════════════════════"
           echo ""
 
       - name: Clean remote folder
+        continue-on-error: false
         uses: appleboy/ssh-action@v0.1.10
         with:
           host: ${{ secrets.HOST_IP }}
           username: ${{ secrets.DEPLOY_USERNAME }}
           key: ${{ secrets.HOST_KEY }}
           script: |
+            echo "🗑️  Cleaning: ${{ secrets.DEPLOY_PATH }}"
             rm -rf ${{ secrets.DEPLOY_PATH }}/*
+            echo "✅ Cleaned successfully"
 
       - name: Deploy to ${{ needs.determine-environment.outputs.environment }}
+        continue-on-error: false
         uses: appleboy/scp-action@v0.1.4
         with:
           host: ${{ secrets.HOST_IP }}
@@ -109,15 +173,22 @@ jobs:
           key: ${{ secrets.HOST_KEY }}
           source: "./*"
           target: "${{ secrets.DEPLOY_PATH }}"
+          strip_prefix: false
+          overwrite: true
 
       - name: Restart Nginx
+        continue-on-error: false
         uses: appleboy/ssh-action@v0.1.10
         with:
           host: ${{ secrets.HOST_IP }}
           username: ${{ secrets.DEPLOY_USERNAME }}
           key: ${{ secrets.HOST_KEY }}
           script: |
+            echo "🔄 Restarting Nginx..."
             sudo systemctl restart nginx
+            echo "✅ Nginx restarted successfully"
+            echo "🌐 Service Status:"
+            sudo systemctl status nginx --no-pager || true
 
       - name: Deployment Success
         if: success()
