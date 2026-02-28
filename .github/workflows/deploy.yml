@@ -2,13 +2,46 @@ name: Deploy Static Site
 
 on:
   workflow_run:
-    workflows: ["Static Site Quality Check"] # Must match CI workflow name exactly
+    workflows: ["Static Site Quality Check"]
     types:
       - completed
 
+env:
+  REGISTRY: ghcr.io
+
 jobs:
-  deploy:
+  determine-environment:
     runs-on: ubuntu-latest
+    outputs:
+      environment: ${{ steps.set-env.outputs.environment }}
+      deploy: ${{ steps.set-env.outputs.deploy }}
+    steps:
+      - name: Determine target environment
+        id: set-env
+        run: |
+          if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+            echo "environment=production" >> $GITHUB_OUTPUT
+            echo "deploy=true" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.ref }}" == "refs/heads/staging" ]]; then
+            echo "environment=testing" >> $GITHUB_OUTPUT
+            echo "deploy=true" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.ref }}" == "refs/heads/develop" ]]; then
+            echo "environment=development" >> $GITHUB_OUTPUT
+            echo "deploy=true" >> $GITHUB_OUTPUT
+          else
+            echo "environment=none" >> $GITHUB_OUTPUT
+            echo "deploy=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Skip notification
+        if: steps.set-env.outputs.deploy == 'false'
+        run: echo "⏭️  Skipping deployment for branch ${{ github.ref }}"
+
+  deploy:
+    needs: determine-environment
+    if: needs.determine-environment.outputs.deploy == 'true'
+    runs-on: ubuntu-latest
+    environment: ${{ needs.determine-environment.outputs.environment }}
 
     steps:
       - name: Checkout Code
@@ -18,20 +51,27 @@ jobs:
         run: |
           rsync -av --exclude=".git" --exclude=".github" ./ ./
 
+      - name: Display Deployment Info
+        run: |
+          echo "🚀 Environment: ${{ needs.determine-environment.outputs.environment }}"
+          echo "📍 Server IP: ${{ secrets.HOST_IP }}"
+          echo "📂 Deploy Path: ${{ secrets.DEPLOY_PATH }}"
+          echo "👤 Username: ${{ secrets.DEPLOY_USERNAME }}"
+
       - name: Clean remote folder
         uses: appleboy/ssh-action@v0.1.10
         with:
           host: ${{ secrets.HOST_IP }}
-          username: ec2-user
+          username: ${{ secrets.DEPLOY_USERNAME }}
           key: ${{ secrets.HOST_KEY }}
           script: |
             rm -rf ${{ secrets.DEPLOY_PATH }}/*
 
-      - name: Deploy to EC2
+      - name: Deploy to ${{ needs.determine-environment.outputs.environment }}
         uses: appleboy/scp-action@v0.1.4
         with:
           host: ${{ secrets.HOST_IP }}
-          username: ec2-user
+          username: ${{ secrets.DEPLOY_USERNAME }}
           key: ${{ secrets.HOST_KEY }}
           source: "./*"
           target: "${{ secrets.DEPLOY_PATH }}"
@@ -40,7 +80,19 @@ jobs:
         uses: appleboy/ssh-action@v0.1.10
         with:
           host: ${{ secrets.HOST_IP }}
-          username: ec2-user
+          username: ${{ secrets.DEPLOY_USERNAME }}
           key: ${{ secrets.HOST_KEY }}
           script: |
             sudo systemctl restart nginx
+
+      - name: Deployment Success
+        if: success()
+        run: |
+          echo "✅ Successfully deployed to ${{ needs.determine-environment.outputs.environment }}"
+          echo "📊 Details: Branch=${{ github.ref }}, Commit=${{ github.sha }}"
+
+      - name: Deployment Failed
+        if: failure()
+        run: |
+          echo "❌ Deployment to ${{ needs.determine-environment.outputs.environment }} FAILED"
+          exit 1
