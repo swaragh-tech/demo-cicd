@@ -73,6 +73,31 @@ jobs:
         run: |
           rsync -av --exclude=".git" --exclude=".github" ./ ./
 
+      - name: Debug SSH Key Format
+        run: |
+          echo ""
+          echo "════════════════════════════════════════════"
+          echo "🔍 SSH KEY FORMAT CHECK"
+          echo "════════════════════════════════════════════"
+
+          KEY_LENGTH=$(echo -n "${{ secrets.HOST_KEY }}" | wc -c)
+          echo "📊 SSH Key length: $KEY_LENGTH characters"
+
+          if echo "${{ secrets.HOST_KEY }}" | grep -q "BEGIN.*PRIVATE KEY"; then
+            echo "✅ SSH Key has valid BEGIN marker"
+          else
+            echo "❌ WARNING: SSH Key might not be in correct format"
+          fi
+
+          if echo "${{ secrets.HOST_KEY }}" | grep -q "END.*PRIVATE KEY"; then
+            echo "✅ SSH Key has valid END marker"
+          else
+            echo "❌ WARNING: SSH Key might be incomplete"
+          fi
+
+          echo "════════════════════════════════════════════"
+          echo ""
+
       - name: Validate Required Secrets
         id: validate-secrets
         run: |
@@ -162,6 +187,11 @@ jobs:
           username: ${{ secrets.DEPLOY_USERNAME }}
           key: ${{ secrets.HOST_KEY }}
           port: 22
+          passphrase: ""
+          timeout: 30s
+          command_timeout: 10m
+          script_stop: true
+          sync: false
           script: |
             echo ""
             echo "🔗 SSH CONNECTION SUCCESSFUL ✅"
@@ -200,6 +230,11 @@ jobs:
           host: ${{ secrets.HOST_IP }}
           username: ${{ secrets.DEPLOY_USERNAME }}
           key: ${{ secrets.HOST_KEY }}
+          port: 22
+          passphrase: ""
+          timeout: 30s
+          command_timeout: 10m
+          script_stop: true
           script: |
             echo "🗑️  Cleaning: ${{ secrets.DEPLOY_PATH }}"
             rm -rf ${{ secrets.DEPLOY_PATH }}/*
@@ -212,6 +247,7 @@ jobs:
           host: ${{ secrets.HOST_IP }}
           username: ${{ secrets.DEPLOY_USERNAME }}
           key: ${{ secrets.HOST_KEY }}
+          port: 22
           source: "./*"
           target: "${{ secrets.DEPLOY_PATH }}"
           strip_prefix: false
@@ -224,6 +260,11 @@ jobs:
           host: ${{ secrets.HOST_IP }}
           username: ${{ secrets.DEPLOY_USERNAME }}
           key: ${{ secrets.HOST_KEY }}
+          port: 22
+          passphrase: ""
+          timeout: 30s
+          command_timeout: 10m
+          script_stop: true
           script: |
             echo "🔄 Restarting Nginx..."
             sudo systemctl restart nginx
