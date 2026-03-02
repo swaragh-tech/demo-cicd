@@ -99,5 +99,89 @@ jobs:
           echo "🔑 HOST_KEY exists: $([ -z '${{ secrets.HOST_KEY }}' ] && echo 'NO ❌' || echo 'YES ✅')"
           echo ""
           echo "════════════════════════════════════════════"
-          echo "✅ WORKFLOW COMPLETE - NO FILES DEPLOYED"
+          echo "✅ SECRETS VERIFIED - READY FOR DEPLOYMENT"
+          echo "════════════════════════════════════════════"
+
+      - name: 🔗 Test SSH Connection
+        uses: appleboy/ssh-action@v0.1.10
+        with:
+          host: ${{ secrets.HOST_IP }}
+          username: ${{ secrets.DEPLOY_USERNAME }}
+          key: ${{ secrets.HOST_KEY }}
+          port: 22
+          passphrase: ""
+          timeout: 10s
+          command_timeout: 5m
+          script: |
+            echo "✅ SSH Connection Successful"
+            echo "Hostname: $(hostname)"
+            echo "User: $(whoami)"
+
+      - name: 🗑️ Clean Remote Folder
+        uses: appleboy/ssh-action@v0.1.10
+        with:
+          host: ${{ secrets.HOST_IP }}
+          username: ${{ secrets.DEPLOY_USERNAME }}
+          key: ${{ secrets.HOST_KEY }}
+          port: 22
+          passphrase: ""
+          timeout: 10s
+          command_timeout: 5m
+          script: |
+            echo "🗑️ Cleaning: ${{ secrets.DEPLOY_PATH }}"
+            rm -rf "${{ secrets.DEPLOY_PATH }}"/*
+            echo "✅ Cleaned successfully"
+
+      - name: 📤 Deploy Files
+        uses: appleboy/scp-action@v0.1.4
+        with:
+          host: ${{ secrets.HOST_IP }}
+          username: ${{ secrets.DEPLOY_USERNAME }}
+          key: ${{ secrets.HOST_KEY }}
+          port: 22
+          source: "./"
+          target: "${{ secrets.DEPLOY_PATH }}"
+          rm: false
+          overwrite: true
+
+      - name: 🔄 Restart Nginx
+        uses: appleboy/ssh-action@v0.1.10
+        with:
+          host: ${{ secrets.HOST_IP }}
+          username: ${{ secrets.DEPLOY_USERNAME }}
+          key: ${{ secrets.HOST_KEY }}
+          port: 22
+          passphrase: ""
+          timeout: 10s
+          command_timeout: 5m
+          script: |
+            echo "🔄 Restarting Nginx..."
+            sudo systemctl restart nginx || systemctl restart nginx
+            echo "✅ Nginx restarted"
+
+      - name: ✅ Deployment Success
+        if: success()
+        run: |
+          echo ""
+          echo "════════════════════════════════════════════"
+          echo "✅ DEPLOYMENT SUCCESSFUL"
+          echo "════════════════════════════════════════════"
+          echo "🎯 Environment: ${{ needs.determine-environment.outputs.environment }}"
+          echo "🌳 Branch: ${{ needs.determine-environment.outputs.source_branch }}"
+          echo "📍 Server: ${{ secrets.HOST_IP }}"
+          echo "📂 Path: ${{ secrets.DEPLOY_PATH }}"
+          echo "⏰ Time: $(date)"
+          echo "════════════════════════════════════════════"
+
+      - name: ❌ Deployment Failed
+        if: failure()
+        run: |
+          echo ""
+          echo "════════════════════════════════════════════"
+          echo "❌ DEPLOYMENT FAILED"
+          echo "════════════════════════════════════════════"
+          echo "🎯 Environment: ${{ needs.determine-environment.outputs.environment }}"
+          echo "🌳 Branch: ${{ needs.determine-environment.outputs.source_branch }}"
+          echo "⏰ Time: $(date)"
+          echo "Check logs above for details"
           echo "════════════════════════════════════════════"
