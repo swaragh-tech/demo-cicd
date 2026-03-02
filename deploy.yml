@@ -81,6 +81,10 @@ jobs:
           echo "🏢 Repository: ${{ github.repository }}"
           echo "════════════════════════════════════════════"
 
+      - name: Prepare Deployment Artifact
+        run: |
+          rsync -av --exclude=".git" --exclude=".github" ./ ./
+
       - name: Debug SSH Key Format
         run: |
           echo ""
@@ -251,92 +255,86 @@ jobs:
           echo "📍 Commit SHA: ${{ github.sha }}"
           echo "👤 Actor: ${{ github.actor }}"
           echo ""
-          echo "📋 CONFIGURATION TEST MODE (No deployment)"
+          echo "📋 DEPLOYMENT STEPS:"
+          echo "   1️⃣  Clean remote folder at ${{ secrets.DEPLOY_PATH }}"
+          echo "   2️⃣  Copy files via SCP"
+          echo "   3️⃣  Restart Nginx"
           echo "════════════════════════════════════════════"
           echo ""
 
-      - name: Console Configuration Details (TEST MODE)
-        run: |
-          echo ""
-          echo "════════════════════════════════════════════"
-          echo "📋 SECRETS & ENVIRONMENT DETAILS"
-          echo "════════════════════════════════════════════"
-          echo ""
-          echo "🎯 Environment: ${{ needs.determine-environment.outputs.environment }}"
-          echo ""
+      - name: Clean remote folder
+        continue-on-error: false
+        uses: appleboy/ssh-action@v0.1.10
+        with:
+          host: ${{ secrets.HOST_IP }}
+          username: ${{ secrets.DEPLOY_USERNAME }}
+          key: ${{ secrets.HOST_KEY }}
+          port: 22
+          passphrase: ""
+          timeout: 30s
+          command_timeout: 10m
+          script_stop: true
+          script: |
+            echo "🗑️  Cleaning: ${{ secrets.DEPLOY_PATH }}"
+            rm -rf ${{ secrets.DEPLOY_PATH }}/*
+            echo "✅ Cleaned successfully"
 
-          # Show HOST_IP (safe - just showing it exists and checking length)
-          HOST_IP_VAL="${{ secrets.HOST_IP }}"
-          if [ -z "$HOST_IP_VAL" ]; then
-            echo "❌ HOST_IP: NOT SET"
-          else
-            HOST_IP_LEN=$(echo -n "$HOST_IP_VAL" | wc -c)
-            echo "✅ HOST_IP: Set (length: ${HOST_IP_LEN} chars)"
-            echo "           Value: $HOST_IP_VAL"
-          fi
-          echo ""
+      - name: Deploy to ${{ needs.determine-environment.outputs.environment }}
+        continue-on-error: false
+        uses: appleboy/scp-action@v0.1.4
+        with:
+          host: ${{ secrets.HOST_IP }}
+          username: ${{ secrets.DEPLOY_USERNAME }}
+          key: ${{ secrets.HOST_KEY }}
+          port: 22
+          source: "./*"
+          target: "${{ secrets.DEPLOY_PATH }}"
+          strip_prefix: false
+          overwrite: true
 
-          # Show DEPLOY_PATH
-          DEPLOY_PATH_VAL="${{ secrets.DEPLOY_PATH }}"
-          if [ -z "$DEPLOY_PATH_VAL" ]; then
-            echo "❌ DEPLOY_PATH: NOT SET"
-          else
-            echo "✅ DEPLOY_PATH: $DEPLOY_PATH_VAL"
-          fi
-          echo ""
+      - name: Restart Nginx
+        continue-on-error: false
+        uses: appleboy/ssh-action@v0.1.10
+        with:
+          host: ${{ secrets.HOST_IP }}
+          username: ${{ secrets.DEPLOY_USERNAME }}
+          key: ${{ secrets.HOST_KEY }}
+          port: 22
+          passphrase: ""
+          timeout: 30s
+          command_timeout: 10m
+          script_stop: true
+          script: |
+            echo "🔄 Restarting Nginx..."
+            sudo systemctl restart nginx
+            echo "✅ Nginx restarted successfully"
+            echo "🌐 Service Status:"
+            sudo systemctl status nginx --no-pager || true
 
-          # Show DEPLOY_USERNAME
-          DEPLOY_USERNAME_VAL="${{ secrets.DEPLOY_USERNAME }}"
-          if [ -z "$DEPLOY_USERNAME_VAL" ]; then
-            echo "❌ DEPLOY_USERNAME: NOT SET"
-          else
-            echo "✅ DEPLOY_USERNAME: $DEPLOY_USERNAME_VAL"
-          fi
-          echo ""
-
-          # Show HOST_KEY (only check if it exists, NOT the value)
-          HOST_KEY_VAL="${{ secrets.HOST_KEY }}"
-          if [ -z "$HOST_KEY_VAL" ]; then
-            echo "❌ HOST_KEY: NOT SET (environment secrets not injected)"
-          else
-            HOST_KEY_LEN=$(echo -n "$HOST_KEY_VAL" | wc -c)
-            echo "✅ HOST_KEY: Set (length: ${HOST_KEY_LEN} chars) - NOT displaying value for security"
-          fi
-          echo ""
-          echo "════════════════════════════════════════════"
-          echo "✅ TEST COMPLETE - No files deployed"
-          echo "════════════════════════════════════════════"
-          echo ""
-
-      - name: Test Complete
+      - name: Deployment Success
         if: success()
         run: |
           echo ""
           echo "════════════════════════════════════════════"
-          echo "✅ WORKFLOW TEST COMPLETED SUCCESSFULLY"
+          echo "✅ DEPLOYMENT COMPLETED SUCCESSFULLY"
           echo "════════════════════════════════════════════"
           echo "🎯 Environment: ${{ needs.determine-environment.outputs.environment }}"
-          echo "🌳 Source Branch: ${{ needs.determine-environment.outputs.source_branch }}"
+          echo "🌳 Branch: ${{ github.ref }}"
           echo "📍 Commit SHA: ${{ github.sha }}"
           echo "⏰ Timestamp: $(date)"
-          echo ""
-          echo "✅ All secrets properly injected!"
-          echo "✅ No deployment was made (TEST MODE)"
           echo "════════════════════════════════════════════"
           echo ""
 
-      - name: Test Failed
+      - name: Deployment Failed
         if: failure()
         run: |
           echo ""
           echo "════════════════════════════════════════════"
-          echo "❌ WORKFLOW TEST FAILED"
+          echo "❌ DEPLOYMENT FAILED"
           echo "════════════════════════════════════════════"
           echo "🎯 Environment: ${{ needs.determine-environment.outputs.environment }}"
-          echo "🌳 Source Branch: ${{ needs.determine-environment.outputs.source_branch }}"
+          echo "🌳 Branch: ${{ github.ref }}"
           echo "📍 Commit SHA: ${{ github.sha }}"
           echo "⏰ Timestamp: $(date)"
-          echo ""
-          echo "❌ Check the logs above for secret injection issues"
           echo "════════════════════════════════════════════"
           exit 1
