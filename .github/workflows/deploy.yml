@@ -99,89 +99,40 @@ jobs:
           echo "🔑 HOST_KEY exists: $([ -z '${{ secrets.HOST_KEY }}' ] && echo 'NO ❌' || echo 'YES ✅')"
           echo ""
           echo "════════════════════════════════════════════"
-          echo "✅ SECRETS VERIFIED - READY FOR DEPLOYMENT"
+          echo "✅ WORKFLOW COMPLETE - NO FILES DEPLOYED"
           echo "════════════════════════════════════════════"
-
-      - name: 🔗 Test SSH Connection
-        uses: appleboy/ssh-action@v0.1.10
-        with:
-          host: ${{ secrets.HOST_IP }}
-          username: ${{ secrets.DEPLOY_USERNAME }}
-          key: ${{ secrets.HOST_KEY }}
-          port: 22
-          passphrase: ""
-          timeout: 10s
-          command_timeout: 5m
-          script: |
-            echo "✅ SSH Connection Successful"
-            echo "Hostname: $(hostname)"
-            echo "User: $(whoami)"
-
-      - name: 🗑️ Clean Remote Folder
-        uses: appleboy/ssh-action@v0.1.10
-        with:
-          host: ${{ secrets.HOST_IP }}
-          username: ${{ secrets.DEPLOY_USERNAME }}
-          key: ${{ secrets.HOST_KEY }}
-          port: 22
-          passphrase: ""
-          timeout: 10s
-          command_timeout: 5m
-          script: |
-            echo "🗑️ Cleaning: ${{ secrets.DEPLOY_PATH }}"
-            rm -rf "${{ secrets.DEPLOY_PATH }}"/*
-            echo "✅ Cleaned successfully"
-
-      - name: 📤 Deploy Files
-        uses: appleboy/scp-action@v0.1.4
-        with:
-          host: ${{ secrets.HOST_IP }}
-          username: ${{ secrets.DEPLOY_USERNAME }}
-          key: ${{ secrets.HOST_KEY }}
-          port: 22
-          source: "./"
-          target: "${{ secrets.DEPLOY_PATH }}"
-          rm: false
-          overwrite: true
-
-      - name: 🔄 Restart Nginx
-        uses: appleboy/ssh-action@v0.1.10
-        with:
-          host: ${{ secrets.HOST_IP }}
-          username: ${{ secrets.DEPLOY_USERNAME }}
-          key: ${{ secrets.HOST_KEY }}
-          port: 22
-          passphrase: ""
-          timeout: 10s
-          command_timeout: 5m
-          script: |
-            echo "🔄 Restarting Nginx..."
-            sudo systemctl restart nginx || systemctl restart nginx
-            echo "✅ Nginx restarted"
-
-      - name: ✅ Deployment Success
-        if: success()
+      - name: 🔍 DEBUG: Check SSH Key Format
         run: |
+          echo "Checking SSH key format..."
           echo ""
-          echo "════════════════════════════════════════════"
-          echo "✅ DEPLOYMENT SUCCESSFUL"
-          echo "════════════════════════════════════════════"
-          echo "🎯 Environment: ${{ needs.determine-environment.outputs.environment }}"
-          echo "🌳 Branch: ${{ needs.determine-environment.outputs.source_branch }}"
-          echo "📍 Server: ${{ secrets.HOST_IP }}"
-          echo "📂 Path: ${{ secrets.DEPLOY_PATH }}"
-          echo "⏰ Time: $(date)"
-          echo "════════════════════════════════════════════"
-
-      - name: ❌ Deployment Failed
-        if: failure()
-        run: |
+          KEY_LEN=$(echo -n "${{ secrets.HOST_KEY }}" | wc -c)
+          echo "Key length: $KEY_LEN characters"
           echo ""
-          echo "════════════════════════════════════════════"
-          echo "❌ DEPLOYMENT FAILED"
-          echo "════════════════════════════════════════════"
-          echo "🎯 Environment: ${{ needs.determine-environment.outputs.environment }}"
-          echo "🌳 Branch: ${{ needs.determine-environment.outputs.source_branch }}"
-          echo "⏰ Time: $(date)"
-          echo "Check logs above for details"
-          echo "════════════════════════════════════════════"
+          
+          # Check if key starts with BEGIN
+          if echo "${{ secrets.HOST_KEY }}" | head -c 30 | grep -q "BEGIN"; then
+            echo "✅ Key starts with BEGIN marker"
+          else
+            echo "❌ ERROR: Key does NOT start with BEGIN marker!"
+            echo "   First 50 chars of key:"
+            echo "${{ secrets.HOST_KEY }}" | head -c 50
+          fi
+          echo ""
+          
+          # Check if key ends with END
+          if echo "${{ secrets.HOST_KEY }}" | tail -c 30 | grep -q "END"; then
+            echo "✅ Key ends with END marker"
+          else
+            echo "❌ ERROR: Key does NOT end with END marker!"
+            echo "   Last 50 chars of key:"
+            echo "${{ secrets.HOST_KEY }}" | tail -c 50
+          fi
+          echo ""
+          
+          # Try to parse key
+          if echo "${{ secrets.HOST_KEY }}" | ssh-keygen -l -f /dev/stdin > /dev/null 2>&1; then
+            echo "✅ Key format is VALID OpenSSH"
+          else
+            echo "❌ ERROR: Key format is INVALID!"
+            echo "   This is why SSH auth is failing"
+          fi
