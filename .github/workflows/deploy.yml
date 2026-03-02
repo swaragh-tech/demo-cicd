@@ -15,36 +15,48 @@ jobs:
     outputs:
       environment: ${{ steps.set-env.outputs.environment }}
       deploy: ${{ steps.set-env.outputs.deploy }}
+      source_branch: ${{ steps.set-env.outputs.source_branch }}
     steps:
-      - name: Determine target environment
+      - name: Determine target environment (FIXED FOR workflow_run)
         id: set-env
         run: |
+          # CRITICAL FIX: Use event.workflow_run.head_branch for workflow_run trigger
+          # This gives the ACTUAL branch that triggered the original workflow
+          SOURCE_BRANCH="${{ github.event.workflow_run.head_branch }}"
+
           echo "════════════════════════════════════════════"
           echo "🔍 ENVIRONMENT DETECTION STARTED"
-          echo "📌 Current Branch: ${{ github.ref }}"
+          echo "⚠️  Using github.event.workflow_run.head_branch (CORRECT for workflow_run)"
+          echo "📌 Source Branch: $SOURCE_BRANCH"
+          echo "📌 github.ref (for reference): ${{ github.ref }}"
           echo "════════════════════════════════════════════"
-          if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+
+          if [[ "$SOURCE_BRANCH" == "main" ]]; then
             echo "environment=production" >> $GITHUB_OUTPUT
             echo "deploy=true" >> $GITHUB_OUTPUT
+            echo "source_branch=$SOURCE_BRANCH" >> $GITHUB_OUTPUT
             echo "✅ ENVIRONMENT SET TO: production"
-          elif [[ "${{ github.ref }}" == "refs/heads/staging" ]]; then
+          elif [[ "$SOURCE_BRANCH" == "staging" ]]; then
             echo "environment=testing" >> $GITHUB_OUTPUT
             echo "deploy=true" >> $GITHUB_OUTPUT
+            echo "source_branch=$SOURCE_BRANCH" >> $GITHUB_OUTPUT
             echo "✅ ENVIRONMENT SET TO: testing"
-          elif [[ "${{ github.ref }}" == "refs/heads/develop" ]]; then
+          elif [[ "$SOURCE_BRANCH" == "develop" ]]; then
             echo "environment=development" >> $GITHUB_OUTPUT
             echo "deploy=true" >> $GITHUB_OUTPUT
+            echo "source_branch=$SOURCE_BRANCH" >> $GITHUB_OUTPUT
             echo "✅ ENVIRONMENT SET TO: development"
           else
             echo "environment=none" >> $GITHUB_OUTPUT
             echo "deploy=false" >> $GITHUB_OUTPUT
-            echo "⏭️  DEPLOY SKIPPED - Branch not configured"
+            echo "source_branch=$SOURCE_BRANCH" >> $GITHUB_OUTPUT
+            echo "⏭️  DEPLOY SKIPPED - Branch not configured: $SOURCE_BRANCH"
           fi
           echo "════════════════════════════════════════════"
 
       - name: Skip notification
         if: steps.set-env.outputs.deploy == 'false'
-        run: echo "⏭️  Skipping deployment for branch ${{ github.ref }}"
+        run: echo "⏭️  Skipping deployment for branch ${{ steps.set-env.outputs.source_branch }}"
 
   deploy:
     needs: determine-environment
@@ -83,91 +95,115 @@ jobs:
           KEY_LENGTH=$(echo -n "${{ secrets.HOST_KEY }}" | wc -c)
           echo "📊 SSH Key length: $KEY_LENGTH characters"
 
-          if echo "${{ secrets.HOST_KEY }}" | grep -q "BEGIN.*PRIVATE KEY"; then
+          if [ "$KEY_LENGTH" -eq 0 ]; then
+            echo "❌ CRITICAL: SSH Key is EMPTY"
+            echo "   This means environment secrets were NOT injected"
+            echo "   Cause: Environment name mismatch or protection rule issue"
+          elif [ "$KEY_LENGTH" -lt 100 ]; then
+            echo "⚠️  WARNING: SSH Key seems too short (${KEY_LENGTH} chars)"
+            echo "   Valid SSH keys are typically 1700+ characters"
+          elif echo "${{ secrets.HOST_KEY }}" | head -c 50 | grep -q "BEGIN.*PRIVATE KEY"; then
             echo "✅ SSH Key has valid BEGIN marker"
           else
-            echo "❌ WARNING: SSH Key might not be in correct format"
+            echo "⚠️  Key format may not be standard OpenSSH"
           fi
 
-          if echo "${{ secrets.HOST_KEY }}" | grep -q "END.*PRIVATE KEY"; then
-            echo "✅ SSH Key has valid END marker"
+          if echo "${{ secrets.HOST_KEY }}" | tail -c 50 | grep -q "END.*PRIVATE KEY"; then
+            echo "✅ SSH Key has valid END marker"  
           else
-            echo "❌ WARNING: SSH Key might be incomplete"
+            if [ "$KEY_LENGTH" -gt 100 ]; then
+              echo "⚠️  SSH Key might be incomplete (missing END marker)"
+            fi
           fi
 
           echo "════════════════════════════════════════════"
           echo ""
 
-      - name: Validate Required Secrets
+      - name: Validate Required Secrets (FIXED with safe debug output)
         id: validate-secrets
         run: |
           echo ""
           echo "════════════════════════════════════════════"
           echo "🔐 VALIDATING DEPLOYMENT SECRETS"
+          echo "🎯 Environment: ${{ needs.determine-environment.outputs.environment }}"
+          echo "🌳 Source Branch: ${{ needs.determine-environment.outputs.source_branch }}"
           echo "════════════════════════════════════════════"
 
-          HOST_IP="${{ secrets.HOST_IP }}"
-          DEPLOY_PATH="${{ secrets.DEPLOY_PATH }}"
-          DEPLOY_USERNAME="${{ secrets.DEPLOY_USERNAME }}"
-          HOST_KEY="${{ secrets.HOST_KEY }}"
+          # Safely check if secrets exist without exposing values
+          # Using ${var:+1} pattern - returns 1 if set, empty if not
+          HOST_IP_SET="${{ secrets.HOST_IP }}${:+set}"
+          DEPLOY_PATH_SET="${{ secrets.DEPLOY_PATH }}${:+set}"
+          DEPLOY_USERNAME_SET="${{ secrets.DEPLOY_USERNAME }}${:+set}"
+          HOST_KEY_SET="${{ secrets.HOST_KEY }}${:+set}"
 
           MISSING_SECRETS=""
 
-          if [ -z "$HOST_IP" ] || [ "$HOST_IP" = "null" ] || [ "$HOST_IP" = "" ]; then
-            echo "❌ HOST_IP not configured"
+          if [ -z "${{ secrets.HOST_IP }}" ]; then
+            echo "❌ HOST_IP not configured (secret not found)"
             MISSING_SECRETS="${MISSING_SECRETS}HOST_IP "
           else
-            echo "✅ HOST_IP is set"
+            # Only show length, not value
+            KEY_LEN=$(echo -n "${{ secrets.HOST_IP }}" | wc -c)
+            echo "✅ HOST_IP is set (length: ${KEY_LEN} chars)"
           fi
 
-          if [ -z "$DEPLOY_PATH" ] || [ "$DEPLOY_PATH" = "null" ] || [ "$DEPLOY_PATH" = "" ]; then
+          if [ -z "${{ secrets.DEPLOY_PATH }}" ]; then
             echo "❌ DEPLOY_PATH not configured"
             MISSING_SECRETS="${MISSING_SECRETS}DEPLOY_PATH "
           else
             echo "✅ DEPLOY_PATH is set"
           fi
 
-          if [ -z "$DEPLOY_USERNAME" ] || [ "$DEPLOY_USERNAME" = "null" ] || [ "$DEPLOY_USERNAME" = "" ]; then
+          if [ -z "${{ secrets.DEPLOY_USERNAME }}" ]; then
             echo "❌ DEPLOY_USERNAME not configured"
             MISSING_SECRETS="${MISSING_SECRETS}DEPLOY_USERNAME "
           else
             echo "✅ DEPLOY_USERNAME is set"
           fi
 
-          if [ -z "$HOST_KEY" ] || [ "$HOST_KEY" = "null" ] || [ "$HOST_KEY" = "" ]; then
-            echo "❌ HOST_KEY not configured"
+          if [ -z "${{ secrets.HOST_KEY }}" ]; then
+            echo "❌ HOST_KEY not configured (THIS IS LIKELY THE ISSUE)"
+            echo "   This means environment secrets are NOT being injected"
+            echo "   Check: Environment name case sensitivity"
+            echo "   Check: Branch matches environment protection rules"
             MISSING_SECRETS="${MISSING_SECRETS}HOST_KEY "
           else
-            echo "✅ HOST_KEY is set"
+            # Safe debug: only check format, not content
+            KEY_LEN=$(echo -n "${{ secrets.HOST_KEY }}" | wc -c)
+            if echo "${{ secrets.HOST_KEY }}" | head -c 50 | grep -q "BEGIN.*PRIVATE KEY"; then
+              echo "✅ HOST_KEY is set and has valid format (length: ${KEY_LEN} chars)"
+            else
+              echo "⚠️  HOST_KEY is set but format may be incorrect (length: ${KEY_LEN} chars)"
+            fi
           fi
 
           echo "════════════════════════════════════════════"
           echo ""
 
           if [ -n "$MISSING_SECRETS" ]; then
-            echo "⚠️  ⚠️  ⚠️  MISSING SECRETS ⚠️  ⚠️  ⚠️ "
+            echo "⚠️  ⚠️  ⚠️  SECRETS MISSING ⚠️  ⚠️  ⚠️ "
             echo "Missing: $MISSING_SECRETS"
             echo ""
-            echo "📋 STEP-BY-STEP FIX:"
+            echo "🔍 TROUBLESHOOTING:"
+            echo ""
+            echo "If HOST_KEY is missing:"
+            echo "  1. Check Environment Name in GitHub is EXACTLY: '${{ needs.determine-environment.outputs.environment }}'"
+            echo "  2. Environment names are CASE SENSITIVE"
+            echo "  3. Verify branch protection rules aren't blocking environments"
+            echo "  4. If using deployment protection rules, approve pending deployments"
+            echo ""
+            echo "If DEPLOY_PATH/USERNAME/IP are missing:"
             echo ""
             echo "1️⃣  Go to GitHub.com → Your Repository"
             echo "2️⃣  Click 'Settings' (gear icon at top)"
             echo "3️⃣  In left menu, click 'Environments'"
-            echo "4️⃣  Click on the environment: '${{ needs.determine-environment.outputs.environment }}'"
-            echo "5️⃣  Click 'Add secret' button"
-            echo "6️⃣  Add these secrets (create each one):"
+            echo "4️⃣  Create environment (if not exists): '${{ needs.determine-environment.outputs.environment }}'"
+            echo "5️⃣  Click 'Add secret' and configure:"
             echo ""
-            echo "   Name: HOST_IP"
-            echo "   Value: (your server's IP address, e.g., 192.168.1.100)"
-            echo ""
-            echo "   Name: DEPLOY_PATH"
-            echo "   Value: (path where files go, e.g., /var/www/html)"
-            echo ""
-            echo "   Name: DEPLOY_USERNAME"
-            echo "   Value: (SSH username, e.g., ubuntu or deploy)"
-            echo ""
-            echo "   Name: HOST_KEY"
-            echo "   Value: (your SSH private key)"
+            echo "   HOST_IP='your.server.ip.address'"
+            echo "   DEPLOY_PATH='/var/www/html'"
+            echo "   DEPLOY_USERNAME='deploy_user'"  
+            echo "   HOST_KEY='-----BEGIN OPENSSH PRIVATE KEY-----\\n...'"
             echo ""
             echo "════════════════════════════════════════════"
             echo "❌ DEPLOYMENT STOPPED - SECRETS MISSING"
@@ -175,12 +211,14 @@ jobs:
             exit 1
           else
             echo "✅ ALL REQUIRED SECRETS CONFIGURED"
+            echo "✅ Environment secrets successfully injected"
             echo "🚀 PROCEEDING WITH DEPLOYMENT"
             echo "════════════════════════════════════════════"
             echo ""
           fi
 
-      - name: Test SSH Connection
+      - name: Test SSH Connection (FIXED - logs now visible)
+        id: ssh-test
         uses: appleboy/ssh-action@v0.1.10
         with:
           host: ${{ secrets.HOST_IP }}
@@ -188,21 +226,22 @@ jobs:
           key: ${{ secrets.HOST_KEY }}
           port: 22
           passphrase: ""
-          timeout: 30s
-          command_timeout: 10m
+          timeout: 10s
+          command_timeout: 5m
           script_stop: true
           sync: false
+          # IMPORTANT: If SSH auth fails, this script never executes.
+          # That's why you see no logs. Authentication failure = early Docker exit.
           script: |
-            echo ""
+            set -e
             echo "🔗 SSH CONNECTION SUCCESSFUL ✅"
             echo "=========================="
             echo "Hostname: $(hostname)"
             echo "User: $(whoami)"
             echo "Current Time: $(date)"
             echo "Disk Space:"
-            df -h | grep -E "Filesystem|^/"
+            df -h | grep -E "Filesystem|^/" || df -h
             echo "=========================="
-            echo ""
 
       - name: Display Deployment Info
         run: |
