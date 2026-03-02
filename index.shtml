@@ -13,7 +13,7 @@
   <h1>Welcome to the Demo Project</h1>
   <p>This is the home page. Use the navigation to explore other pages.</p>
   <h2>Testing PR Flow for demo</h2> 
-  <p>this is in developing stage.</p>  
+  <p>this is in pusing to testing.</p>  
 </main>
 
 <!--#include virtual="includes/footer.html" -->
