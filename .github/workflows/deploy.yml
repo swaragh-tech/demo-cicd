@@ -101,37 +101,3 @@ jobs:
           echo "════════════════════════════════════════════"
           echo "✅ WORKFLOW COMPLETE - NO FILES DEPLOYED"
           echo "════════════════════════════════════════════"
-        run: |
-          echo ""
-          echo "════════════════════════════════════════════"
-          echo "🔍 SSH KEY FORMAT CHECK"
-          echo "════════════════════════════════════════════"
-
-          KEY_LENGTH=$(echo -n "${{ secrets.HOST_KEY }}" | wc -c)
-          echo "📊 SSH Key length: $KEY_LENGTH characters"
-
-          if [ "$KEY_LENGTH" -eq 0 ]; then
-            echo "❌ CRITICAL: SSH Key is EMPTY"
-            echo "   This means environment secrets were NOT injected"
-            echo "   Cause: Environment name mismatch or protection rule issue"
-          elif [ "$KEY_LENGTH" -lt 100 ]; then
-            echo "⚠️  WARNING: SSH Key seems too short (${KEY_LENGTH} chars)"
-            echo "   Valid SSH keys are typically 1700+ characters"
-          elif echo "${{ secrets.HOST_KEY }}" | head -c 50 | grep -q "BEGIN.*PRIVATE KEY"; then
-            echo "✅ SSH Key has valid BEGIN marker"
-          else
-            echo "⚠️  Key format may not be standard OpenSSH"
-          fi
-
-          if echo "${{ secrets.HOST_KEY }}" | tail -c 50 | grep -q "END.*PRIVATE KEY"; then
-            echo "✅ SSH Key has valid END marker"  
-          else
-            if [ "$KEY_LENGTH" -gt 100 ]; then
-              echo "⚠️  SSH Key might be incomplete (missing END marker)"
-            fi
-          fi
-
-          echo "════════════════════════════════════════════"
-          echo ""
-
-
